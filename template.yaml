@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: EC2 Instance with access to S3 buckets
+
+Parameters:
+  LatestAmiId:
+    Description: "AMI for EC2"
+    Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
+    Default: "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+
+
+Resources:
+  EC2InstanceProfileRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: EC2InstanceProfilePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListObject
+                Resource: '*'
+
+
+  MyInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: [!Ref EC2InstanceProfileRole]
+
+
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EC2 CF security group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80          
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+
+  MyEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: "t2.micro"
+      ImageId: !Ref LatestAmiId
+      SecurityGroups: [!Ref MySecurityGroup]
+      IamInstanceProfile: !Ref MyInstanceProfile
+      UserData: 
+        Fn::Base64: |  
+          #!/bin/bash
+          sudo yum -y update 
+          sudo yum -y install ruby
+          sudo yum -y install wget
+          sudo amazon-linux-extras install nginx1
+          curl -sL https://rpm.nodesource.com/setup_16.x | sudo bash -
+          sudo yum install -y nodejs
+          cd /home/ec2-user
+          wget https://aws-codedeploy-us-east-2.s3.amazonaws.com/latest/install
+          chmod +x ./install
+          sudo ./install auto      
