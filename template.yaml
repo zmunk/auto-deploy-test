@@ -9,6 +9,11 @@ Parameters:
 
 
 Resources:
+
+  ###########
+  #   EC2   #
+  ###########
+
   EC2InstanceProfileRole:
     Type: AWS::IAM::Role
     Properties:
@@ -74,3 +79,44 @@ Resources:
           wget https://aws-codedeploy-us-east-2.s3.amazonaws.com/latest/install
           chmod +x ./install
           sudo ./install auto      
+
+  #############
+  #   CI/CD   #
+  #############
+
+  ArtifactS3Bucket:
+    Type: AWS::S3::Bucket
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CodeBuildRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /service-role/
+      Policies:
+        - PolicyName: CodeBuildCICDAccessPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::codepipeline-${AWS::Region}-*
+                  - !Sub arn:aws:s3:::${ArtifactS3Bucket}/*
+                  - !Sub arn:aws:s3:::${ArtifactS3Bucket}

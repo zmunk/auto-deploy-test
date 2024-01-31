@@ -12,6 +12,14 @@ if [ "$1 $2" = "create stack" ]; then
     exit 0
 fi
 
+if [ "$1 $2" = "update stack" ]; then
+    aws cloudformation update-stack \
+        --stack-name "$STACK_NAME" \
+        --template-body file://template.yaml \
+        --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+    exit 0
+fi
+
 if [ "$1 $2" = "delete stack" ]; then
     aws cloudformation delete-stack \
         --stack-name "$STACK_NAME"
@@ -29,7 +37,7 @@ fi
 if [ "$1 $2" = "stack logs" ]; then
     aws cloudformation describe-stack-events \
         --stack-name "$STACK_NAME" \
-        --query "StackEvents[].[ResourceStatus, ResourceStatusReason]" \
+        --query "StackEvents[].[ResourceStatus, ResourceStatusReason, ResourceType]" \
         --output text
     exit 0
 fi
