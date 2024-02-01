@@ -6,6 +6,10 @@ Parameters:
     Description: "AMI for EC2"
     Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
     Default: "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+  WebsiteBucketName:
+    Type: String
+    Description: Name of the S3 bucket to store the React app files
+    Default: "enmass"
 
 
 Resources:
@@ -120,3 +124,26 @@ Resources:
                   - !Sub arn:aws:s3:::codepipeline-${AWS::Region}-*
                   - !Sub arn:aws:s3:::${ArtifactS3Bucket}/*
                   - !Sub arn:aws:s3:::${ArtifactS3Bucket}
+
+  ##################
+  #   CloudFront   #
+  ##################
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        DefaultRootObject: index.html
+        Origins:
+          - DomainName: !Sub "${WebsiteBucketName}.s3.amazonaws.com"
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: allow-all
+        Enabled: true
