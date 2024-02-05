@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: EC2 Instance with access to S3 buckets
 
 Parameters:
-  GithubUsername:
+  GithubOwner:
     Type: String
     Default: zmunk
     AllowedPattern: "[A-Za-z0-9-]+"
@@ -131,26 +131,135 @@ Resources:
     Properties:
       Name: !Sub ReactCodeBuildProject-${AWS::StackName}
       ServiceRole: !GetAtt CodeBuildRole.Arn
-      Artifacts:
-        Type: NO_ARTIFACTS
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/standard:5.0
+        Image: aws/codebuild/standard:7.0
+        EnvironmentVariables:
+          - Name: BUILD_ARTIFACT_BUCKET
+            Value: !Ref ReactAppBucket
+      Artifacts:
+        Type: CODEPIPELINE
       Source:
-        Type: GITHUB
-        Location: !Sub https://github.com/${GithubUsername}/${GithubRepo}.git 
-        Auth:
-          Type: OAUTH
-          Resource: !Ref CodeBuildSourceCredential
-      Triggers:
-        Webhook: true
-        FilterGroups:
-          - - Type: EVENT
-              Pattern: PUSH
-            - Type: HEAD_REF
-              Pattern: ^refs/heads/main
+        Type: CODEPIPELINE
       TimeoutInMinutes: 15
+
+
+  ####################
+  #   CodePipeline   #
+  ####################
+
+  GithubConnection:
+    Type: AWS::CodeStarConnections::Connection
+    Properties:
+      ConnectionName: !Sub GithubConnection-${AWS::StackName}
+      ProviderType: GitHub
+
+  GithubWebhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties:
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration:
+        SecretToken: !Ref GithubOAuthToken
+      RegisterWithThirdParty: true
+      Filters:
+        - JsonPath: "$.ref"
+          MatchEquals: refs/heads/{Branch}
+      TargetPipeline: !Ref CodePipeline
+      TargetAction: Source
+      TargetPipelineVersion: !GetAtt CodePipeline.Version
+
+
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "codepipeline.amazonaws.com"
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: S3CodebuildAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                Resource:
+                  - !Sub ${ReactAppBucket.Arn}
+                  - !Sub ${ReactAppBucket.Arn}/*
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource:
+                  - "*"
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource:
+                  - !Ref GithubConnection
+
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ReactAppBucket
+      RestartExecutionOnUpdate: true
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Provider: GitHub
+                Owner: ThirdParty
+                Version: 1
+              OutputArtifacts:
+                - Name: SourceCode
+              Configuration:
+                Owner: !Ref GithubOwner
+                Repo: !Ref GithubRepo
+                Branch: !Ref GithubBranch
+                PollForSourceChanges: false
+                OAuthToken: !Ref GithubOAuthToken
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Sub ReactCodeBuildProject-${AWS::StackName}
+              InputArtifacts:
+                - Name: SourceCode
+              OutputArtifacts:
+                - Name: BuildArtifact
+        - Name: Deploy
+          Actions: 
+            - Name: DeployAction
+              ActionTypeId:
+                Category: Deploy
+                Provider: S3
+                Owner: AWS
+                Version: 1
+              InputArtifacts: 
+              - Name: BuildArtifact  
+              Configuration:                
+                BucketName: !Ref ReactAppBucket
+                Extract: true
 
 
 Outputs:

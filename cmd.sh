@@ -50,7 +50,7 @@ if [ "$1 $2" = "delete stack" ]; then
 fi
 
 function echo_overwrite() {
-    echo -en "\r                                                     "
+    echo -en "\r                                                             "
     echo -en "\r\r$1"
 }
 
@@ -70,7 +70,18 @@ if [ "$1 $2" = "stack status" ]; then
         if [ $? = 254 ]; then
             echo_overwrite "stack does not exist"
         else
-            echo_overwrite $OUTPUT
+            RED='\033[0;31m'
+            GREEN='\033[0;32m'
+            NC='\033[0m' # No Color
+            if [[ $OUTPUT == *"ROLLBACK"* ]]; then
+                echo_overwrite "${RED}${OUTPUT}${NC}"
+            elif [[ $OUTPUT == *"IN_PROGRESS"* ]]; then
+                echo_overwrite "${OUTPUT} ⌛"
+            elif [ $OUTPUT = "UPDATE_COMPLETE" ]; then
+                echo_overwrite "${GREEN}${OUTPUT}${NC}"
+            else
+                echo_overwrite $OUTPUT
+            fi
         fi
         if [ $RUN_ONCE = true ]; then
             echo ""
