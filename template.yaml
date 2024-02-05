@@ -2,99 +2,87 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: EC2 Instance with access to S3 buckets
 
 Parameters:
-  LatestAmiId:
-    Description: "AMI for EC2"
-    Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
-    Default: "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
-  WebsiteBucketName:
+  GithubUsername:
     Type: String
-    Description: Name of the S3 bucket to store the React app files
-    Default: "enmass"
-
+    Default: zmunk
+    AllowedPattern: "[A-Za-z0-9-]+"
+  GithubRepo:
+    Type: String
+    Default: auto-deploy-test
+    AllowedPattern: "[A-Za-z0-9-]+"
+  GithubBranch:
+    Type: String
+    Default: main
+    AllowedPattern: "[A-Za-z0-9-]+"
+  GithubOAuthToken:
+    Type: String
+    NoEcho: true
+    AllowedPattern: '[A-Za-z0-9_]*'
 
 Resources:
 
-  ###########
-  #   EC2   #
-  ###########
+  ##########
+  #   S3   #
+  ##########
 
-  EC2InstanceProfileRole:
-    Type: AWS::IAM::Role
+  ReactAppBucket:
+    Type: AWS::S3::Bucket
     Properties:
-      AssumeRolePolicyDocument:
+      WebsiteConfiguration:
+        IndexDocument: index.html
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: ObjectWriter
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ReactAppBucket
+      PolicyDocument:
         Version: 2012-10-17
         Statement:
           - Effect: Allow
-            Principal:
-              Service: ec2.amazonaws.com
-            Action: sts:AssumeRole
-      Path: /
-      Policies:
-        - PolicyName: EC2InstanceProfilePolicy
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:ListObject
-                Resource: '*'
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${ReactAppBucket}/*"
 
+  ##################
+  #   CloudFront   #
+  ##################
 
-  MyInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
     Properties:
-      Path: /
-      Roles: [!Ref EC2InstanceProfileRole]
+      DistributionConfig:
+        DefaultRootObject: index.html
+        Origins:
+          - DomainName: !GetAtt ReactAppBucket.RegionalDomainName
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: allow-all
+        Enabled: true
 
 
-  MySecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: EC2 CF security group
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 80          
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-
-
-  MyEC2Instance:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: "t2.micro"
-      ImageId: !Ref LatestAmiId
-      SecurityGroups: [!Ref MySecurityGroup]
-      IamInstanceProfile: !Ref MyInstanceProfile
-      UserData: 
-        Fn::Base64: |  
-          #!/bin/bash
-          sudo yum -y update 
-          sudo yum -y install ruby
-          sudo yum -y install wget
-          sudo amazon-linux-extras install nginx1
-          curl -sL https://rpm.nodesource.com/setup_16.x | sudo bash -
-          sudo yum install -y nodejs
-          cd /home/ec2-user
-          wget https://aws-codedeploy-us-east-2.s3.amazonaws.com/latest/install
-          chmod +x ./install
-          sudo ./install auto      
-
-  #############
-  #   CI/CD   #
-  #############
-
-  ArtifactS3Bucket:
-    Type: AWS::S3::Bucket
+  #################
+  #   CodeBuild   #
+  #################
 
   CodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: CodeBuildRole
+      RoleName: !Sub CodeBuildRole-${AWS::StackName}
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -113,7 +101,7 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+                Resource: "*"
               - Effect: Allow
                 Action:
                   - s3:PutObject
@@ -121,29 +109,54 @@ Resources:
                   - s3:GetObjectVersion
                   - s3:ListBucket
                 Resource:
-                  - !Sub arn:aws:s3:::codepipeline-${AWS::Region}-*
-                  - !Sub arn:aws:s3:::${ArtifactS3Bucket}/*
-                  - !Sub arn:aws:s3:::${ArtifactS3Bucket}
+                  - !Sub arn:aws:s3:::${ReactAppBucket}/*
+                  - !Sub arn:aws:s3:::${ReactAppBucket}
+              - Effect: Allow  
+                Action:
+                  - "codepipeline:CreateWebhook"
+                  - "codepipeline:DeleteWebhook"
+                Resource: "*"                
 
-  ##################
-  #   CloudFront   #
-  ##################
 
-  CloudFrontDistribution:
-    Type: AWS::CloudFront::Distribution
+  CodeBuildSourceCredential:
+    Type: AWS::CodeBuild::SourceCredential
     Properties:
-      DistributionConfig:
-        DefaultRootObject: index.html
-        Origins:
-          - DomainName: !Sub "${WebsiteBucketName}.s3.amazonaws.com"
-            Id: S3Origin
-            S3OriginConfig:
-              OriginAccessIdentity: ""
-        DefaultCacheBehavior:
-          TargetOriginId: S3Origin
-          ForwardedValues:
-            QueryString: false
-            Cookies:
-              Forward: none
-          ViewerProtocolPolicy: allow-all
-        Enabled: true
+      AuthType: PERSONAL_ACCESS_TOKEN
+      ServerType: GITHUB
+      Token: !Ref GithubOAuthToken
+
+
+  ReactCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ReactCodeBuildProject-${AWS::StackName}
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:5.0
+      Source:
+        Type: GITHUB
+        Location: !Sub https://github.com/${GithubUsername}/${GithubRepo}.git 
+        Auth:
+          Type: OAUTH
+          Resource: !Ref CodeBuildSourceCredential
+      Triggers:
+        Webhook: true
+        FilterGroups:
+          - - Type: EVENT
+              Pattern: PUSH
+            - Type: HEAD_REF
+              Pattern: ^refs/heads/main
+      TimeoutInMinutes: 15
+
+
+Outputs:
+  CloudFrontDistributionDomain:
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Description: CloudFront Distribution Domain Name
+  S3BucketName:
+    Value: !Ref ReactAppBucket
+    Description: 'The name of the created S3 bucket'

@@ -1,23 +1,55 @@
-# before running
+the dist files were generated from `nexus/react/cloudformation/react`
 
-create empty .env in react folder
+to build:
+  - create empty react/.env file
+  - create react/.env.local file and add VITE_CLERK_PUBLISHABLE_KEY variable
+  - `cd react`
+  - `npm install`
+  - `npm run dev`
 
-create .env.local in react folder that contains VITE_CLERK_PUBLISHABLE_KEY
+see commands in cmd.sh
 
-# to run locally
+generate github personal access token with the following permissions:
+  - repo
+  - admin:repo_hook
+  - admin:org_hook
 
-cd react
+create cfn-params.json and add GithubOAuthToken parameter, like below
 
-npm install
+```json
+[
+    {
+        "ParameterKey": "GitHubOAuthToken",
+        "ParameterValue": "<token>"
+    }
+]
+```
 
-npm run dev
+`cmd create stack`
 
-# to deploy
+for debugging:
+- `watch ./cmd.sh stack status`
+- `watch ./cmd.sh stack logs`
 
-cd react
+`cmd upload dist <s3-bucket-name>`
 
-npm install
+to get cloudfront domain: `cmd stack output CloudFrontDistributionDomain`
 
-npm run build
+to get s3 bucket name: `cmd stack output S3BucketName`
 
-npm run preview
+# Old notes
+
+before running
+- create empty .env in react folder
+- create .env.local in react folder that contains VITE_CLERK_PUBLISHABLE_KEY
+
+to run locally
+- cd react
+- npm install
+- npm run dev
+
+to deploy
+- cd react
+- npm install
+- npm run build
+- npm run preview

@@ -2,3 +2,4 @@ react/dist
 react/node_modules
 react/.env*
 .DS_Store
+cfn-params.json
