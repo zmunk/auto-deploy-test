@@ -7,7 +7,7 @@ phases:
     commands:
       - echo Build started on `date`
       - echo Compiling
-      - npm run build
+      - npm run --prefix react build
   post_build:
     commands:
       - echo Build completed on `date`
