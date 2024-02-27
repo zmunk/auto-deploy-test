@@ -138,6 +138,8 @@ Resources:
         EnvironmentVariables:
           - Name: BUILD_ARTIFACT_BUCKET
             Value: !Ref ReactAppBucket
+          - Name: VITE_CLERK_PUBLISHABLE_KEY
+            Value: "{{resolve:ssm:/dev/app/config/VITE_CLERK_PUBLISHABLE_KEY}}"
       Artifacts:
         Type: CODEPIPELINE
       Source:

@@ -3,6 +3,7 @@ phases:
   pre_build:
     commands:
       - npm install --prefix react
+      - echo "VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY" > react/.env
   build:
     commands:
       - echo Build started on `date`

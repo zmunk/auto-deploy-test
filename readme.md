@@ -14,6 +14,12 @@ generate github personal access token with the following permissions:
   - admin:repo_hook
   - admin:org_hook
 
+add secret keys to ssm  
+Note: the name of the github branch will be used to store the keys e.g. "dev", "main"
+
+`aws ssm put-parameter --name "/dev/app/config/VITE_CLERK_PUBLISHABLE_KEY" --value "<key>" --type SecureString --region your-region`
+`aws ssm put-parameter --name "/main/app/config/VITE_CLERK_PUBLISHABLE_KEY" --value "<key>" --type SecureString --region your-region`
+
 create cfn-params.json and add GithubOAuthToken parameter, like below
 
 ```json
